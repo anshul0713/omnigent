@@ -142,8 +142,16 @@ function createSharingWrapper(mode: SharingMode) {
   return createInfoWrapper({ sharing_mode: mode });
 }
 
-async function chooseGeneralAccess(name: "No access" | "Read" | "Edit") {
+async function chooseGeneralAccess(name: "Restricted" | "Anyone with the link") {
   const trigger = await screen.findByRole("combobox", { name: "General access" });
+  await waitFor(() => expect(trigger).toBeEnabled());
+  trigger.focus();
+  fireEvent.keyDown(trigger, { key: "Enter" });
+  fireEvent.click(await screen.findByRole("option", { name }));
+}
+
+async function chooseLinkRole(name: "Read" | "Edit") {
+  const trigger = await screen.findByRole("combobox", { name: "Link access permission" });
   await waitFor(() => expect(trigger).toBeEnabled());
   trigger.focus();
   fireEvent.keyDown(trigger, { key: "Enter" });
@@ -189,7 +197,11 @@ describe("PermissionsModal", () => {
         expect(menu).toHaveAttribute("data-side", "bottom");
         expect(menu).toHaveAttribute("data-align", "start");
       });
-      expect(within(menu).getByRole("option", { name: "Read" })).toBeInTheDocument();
+      expect(
+        within(menu).getByRole("option", {
+          name: label === "General access" ? "Restricted" : "Read",
+        }),
+      ).toBeInTheDocument();
 
       fireEvent.keyDown(menu, { key: "Escape" });
       await waitFor(() => expect(screen.queryByRole("listbox")).not.toBeInTheDocument());
@@ -271,10 +283,9 @@ describe("PermissionsModal", () => {
 
     await waitFor(() => expect(screen.getByText("bob@example.com")).toBeInTheDocument());
 
-    // The row's permission dropdown shows the current level ("Read") as a
-    // combobox; the grant form's level select also shows "Read", so disambiguate
-    // by picking the combobox inside bob's row.
-    const rowTrigger = screen.getAllByRole("combobox").find((el) => el.textContent === "Read")!;
+    const rowTrigger = screen.getByRole("combobox", {
+      name: "Permission level for bob@example.com",
+    });
     rowTrigger.focus();
     fireEvent.keyDown(rowTrigger, { key: "Enter" });
     fireEvent.click(await screen.findByRole("option", { name: "Edit" }));
@@ -316,7 +327,7 @@ describe("PermissionsModal", () => {
 
     await waitFor(() => expect(listMock).toHaveBeenCalled());
 
-    await chooseGeneralAccess("Read");
+    await chooseGeneralAccess("Anyone with the link");
 
     await waitFor(() => {
       expect(grantMock).toHaveBeenCalledWith("conv_abc", "__public__", 1);
@@ -910,7 +921,7 @@ describe("PermissionsModal", () => {
       );
       fireEvent.click(await screen.findByRole("button", { name: "Revoke" }));
       await waitFor(() => expect(revokeMock).toHaveBeenCalledWith("conv_abc", "bob"));
-      await chooseGeneralAccess("No access");
+      await chooseGeneralAccess("Restricted");
       await waitFor(() => expect(revokeMock).toHaveBeenCalledWith("conv_abc", "__public__"));
       expect(grantMock).not.toHaveBeenCalled();
     });
@@ -944,23 +955,44 @@ describe("PermissionsModal", () => {
     });
 
     it("grants public Edit only when the server explicitly permits it", async () => {
-      listMock.mockResolvedValue([]);
+      listMock.mockResolvedValue([
+        { user_id: "__public__", conversation_id: "conv_abc", level: 1 },
+      ]);
       grantMock.mockResolvedValue({ user_id: "__public__", conversation_id: "conv_abc", level: 2 });
       render(<PermissionsModal sessionId="conv_abc" open onOpenChange={() => {}} />, {
         wrapper: createInfoWrapper({ public_sharing_max_level: "edit" }),
       });
-      await chooseGeneralAccess("Edit");
+      await chooseLinkRole("Edit");
       await waitFor(() => expect(grantMock).toHaveBeenCalledWith("conv_abc", "__public__", 2));
     });
 
+    it("changes only the __public__ grant when link access is turned on", async () => {
+      listMock.mockResolvedValue([
+        { user_id: "editor@example.com", conversation_id: "conv_abc", level: 2 },
+        { user_id: "reader@example.com", conversation_id: "conv_abc", level: 1 },
+      ]);
+      grantMock.mockResolvedValue({ user_id: "__public__", conversation_id: "conv_abc", level: 1 });
+      render(<PermissionsModal sessionId="conv_abc" open onOpenChange={() => {}} />, {
+        wrapper: createInfoWrapper({ public_sharing_max_level: "read" }),
+      });
+      await screen.findByText("editor@example.com");
+      await chooseGeneralAccess("Anyone with the link");
+      await waitFor(() => expect(grantMock).toHaveBeenCalled());
+      expect(grantMock.mock.calls).toEqual([["conv_abc", "__public__", 1]]);
+      // Adding people stays available while link access is on.
+      expect(screen.getByLabelText("User ID")).toBeEnabled();
+    });
+
     it.each([undefined, "read"] as const)(
-      "offers only No access and Read for a %s ceiling",
+      "offers only Read for link access under a %s ceiling",
       async (level) => {
-        listMock.mockResolvedValue([]);
+        listMock.mockResolvedValue([
+          { user_id: "__public__", conversation_id: "conv_abc", level: 1 },
+        ]);
         render(<PermissionsModal sessionId="conv_abc" open onOpenChange={() => {}} />, {
           wrapper: createInfoWrapper({ public_sharing_max_level: level }),
         });
-        const trigger = screen.getByRole("combobox", { name: "General access" });
+        const trigger = await screen.findByRole("combobox", { name: "Link access permission" });
         await waitFor(() => expect(trigger).toBeEnabled());
         trigger.focus();
         fireEvent.keyDown(trigger, { key: "Enter" });
@@ -969,7 +1001,7 @@ describe("PermissionsModal", () => {
           within(listbox)
             .getAllByRole("option")
             .map((option) => option.textContent),
-        ).toEqual(["No access", "Read"]);
+        ).toEqual(["Read"]);
       },
     );
 
@@ -981,7 +1013,7 @@ describe("PermissionsModal", () => {
       render(<PermissionsModal sessionId="conv_abc" open onOpenChange={() => {}} />, {
         wrapper: createInfoWrapper({ public_sharing_enabled: false }),
       });
-      await chooseGeneralAccess("No access");
+      await chooseGeneralAccess("Restricted");
       await waitFor(() => expect(revokeMock).toHaveBeenCalledWith("conv_abc", "__public__"));
     });
   });

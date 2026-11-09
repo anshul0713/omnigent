@@ -16,7 +16,15 @@ import {
   useState,
 } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CheckIcon, LinkIcon, QrCodeIcon, Trash2Icon, UserPlusIcon } from "lucide-react";
+import {
+  CheckIcon,
+  GlobeIcon,
+  LinkIcon,
+  LockIcon,
+  QrCodeIcon,
+  Trash2Icon,
+  UserPlusIcon,
+} from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import {
@@ -194,7 +202,7 @@ export function PermissionsModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">Share this session</DialogTitle>
           <DialogDescription asChild>
@@ -214,110 +222,6 @@ export function PermissionsModal({
           </DialogDescription>
         </DialogHeader>
 
-        {(publicSharingEnabled || publicGrant) && (
-          <div className="flex min-w-0 items-center justify-between gap-3 rounded-lg border px-3 py-2">
-            <div className="min-w-0">
-              <p className="text-ui font-medium">General access</p>
-              <p className="text-sm text-muted-foreground">
-                Anyone with the link, sign-in required
-              </p>
-            </div>
-            <Select
-              value={String(publicLevel)}
-              onValueChange={handlePublicLevel}
-              disabled={
-                isLoading ||
-                grant.isPending ||
-                revoke.isPending ||
-                (workspaceBlocked && !publicGrant)
-              }
-              componentId="diagnostics.permissions.public_level"
-              valueHasNoPii
-            >
-              <SelectTrigger className="h-8 w-28 shrink-0" aria-label="General access">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent position="popper" align="start">
-                <SelectItem value="0">No access</SelectItem>
-                <SelectItem value="1" disabled={workspaceBlocked || !publicSharingEnabled}>
-                  Read
-                </SelectItem>
-                {publicMaxLevel === 2 && (
-                  <SelectItem
-                    value="2"
-                    disabled={sharingReadOnly || workspaceBlocked || !publicSharingEnabled}
-                  >
-                    Edit
-                  </SelectItem>
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-
-        {/* Workspace-files toggle — off by default so a view-only share never
-            leaks the session's files (which routinely hold secrets). Only the
-            file surfaces open up; edit collaborators already have them. Shown
-            only for sessions that actually have a workspace on disk. */}
-        {hasWorkspace && (
-          <div
-            className="flex items-center justify-between rounded-lg border px-3 py-2"
-            data-testid="share-workspace-files"
-          >
-            <div>
-              <p className="text-ui font-medium">Workspace files</p>
-              <p className="text-sm text-muted-foreground">
-                Let people with view access browse this session's files
-              </p>
-            </div>
-            <Switch
-              checked={workspaceShared}
-              onCheckedChange={(checked) => {
-                setError(null);
-                shareWorkspace.mutate(checked);
-              }}
-              disabled={shareWorkspace.isPending}
-              componentId="diagnostics.permissions.share_workspace_toggle"
-            />
-          </div>
-        )}
-
-        {/* Current grants. DialogContent is a grid, and grid items default to
-            min-width:auto — without min-w-0 a long nowrap email sets the whole
-            track's min-content and pushes every row past the dialog edge. */}
-        <div className="min-w-0" data-testid="share-grants">
-          {isLoading ? (
-            <p className="text-ui text-muted-foreground py-2">Loading…</p>
-          ) : userGrants.length === 0 ? (
-            <p className="text-ui text-muted-foreground py-2">No grants yet.</p>
-          ) : (
-            <>
-              {/* Column headers */}
-              <div className="flex items-center gap-2 px-2 pb-0.5">
-                <span className="flex-1 text-sm font-medium uppercase tracking-wide text-muted-foreground">
-                  Name
-                </span>
-                <span className="w-28 text-sm font-medium uppercase tracking-wide text-muted-foreground">
-                  Permission
-                </span>
-                <span className="size-7 shrink-0" aria-hidden="true" />
-              </div>
-              <div className="max-h-48 overflow-y-auto">
-                {userGrants.map((p) => (
-                  <GrantRow
-                    key={p.user_id}
-                    permission={p}
-                    onRevoke={handleRevoke}
-                    onChangeLevel={handleChangeLevel}
-                    busy={grant.isPending || revoke.isPending}
-                    readOnly={sharingReadOnly}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-
         {/* Shown above the disabled add-grant form so it reads as the reason the
             controls are inert, before the user tries them. */}
         {workspaceBlocked && (
@@ -327,38 +231,35 @@ export function PermissionsModal({
           </p>
         )}
 
-        {/* Add grant form */}
-        <form onSubmit={handleGrant} className="flex items-end gap-2">
-          <div className="flex-1">
-            <label htmlFor="perm-user" className="text-sm font-medium text-muted-foreground">
-              User ID
-            </label>
+        {/* Add people. DialogContent is a grid; min-w-0 lets the field shrink on a
+            phone instead of pushing the level select and button past the edge. */}
+        <form onSubmit={handleGrant} className="flex min-w-0 items-center gap-2">
+          <label htmlFor="perm-user" className="sr-only">
+            User ID
+          </label>
+          <div className="min-w-0 flex-1">
             <AddUserField value={newUserId} onChange={setNewUserId} disabled={workspaceBlocked} />
           </div>
-          <div>
-            <label htmlFor="perm-level" className="text-sm font-medium text-muted-foreground">
-              Level
-            </label>
-            <Select
-              value={newLevel}
-              onValueChange={setNewLevel}
-              disabled={workspaceBlocked}
-              componentId="diagnostics.permissions.grant_level"
-              valueHasNoPii
-            >
-              <SelectTrigger className="mt-1 w-24" aria-label="New user permission">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent position="popper" align="start">
-                <SelectItem value="1">Read</SelectItem>
-                {/* Read-only sharing caps new grants at view; hide Edit. */}
-                {!sharingReadOnly && <SelectItem value="2">Edit</SelectItem>}
-              </SelectContent>
-            </Select>
-          </div>
+          <Select
+            value={newLevel}
+            onValueChange={setNewLevel}
+            disabled={workspaceBlocked}
+            componentId="diagnostics.permissions.grant_level"
+            valueHasNoPii
+          >
+            <SelectTrigger className="h-8 w-24 shrink-0" aria-label="New user permission">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent position="popper" align="start">
+              <SelectItem value="1">Read</SelectItem>
+              {/* Read-only sharing caps new grants at view; hide Edit. */}
+              {!sharingReadOnly && <SelectItem value="2">Edit</SelectItem>}
+            </SelectContent>
+          </Select>
           <Button
             type="submit"
             size="sm"
+            className="shrink-0"
             loading={grant.isPending}
             disabled={workspaceBlocked || !newUserId.trim()}
             aria-describedby={workspaceBlocked ? blockedNoticeId : undefined}
@@ -368,6 +269,133 @@ export function PermissionsModal({
             Grant
           </Button>
         </form>
+
+        {/* People with access. min-w-0: a long nowrap email must not set the
+            grid track's min-content and push every row past the dialog edge. */}
+        <section className="min-w-0 space-y-1" data-testid="share-grants">
+          <h3 className="text-ui font-medium">People with access</h3>
+          {isLoading ? (
+            <p className="text-ui text-muted-foreground py-2">Loading…</p>
+          ) : userGrants.length === 0 ? (
+            <p className="text-ui text-muted-foreground py-2">No grants yet.</p>
+          ) : (
+            <div className="max-h-48 overflow-y-auto">
+              {userGrants.map((p) => (
+                <GrantRow
+                  key={p.user_id}
+                  permission={p}
+                  onRevoke={handleRevoke}
+                  onChangeLevel={handleChangeLevel}
+                  busy={grant.isPending || revoke.isPending}
+                  readOnly={sharingReadOnly}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* General (link) access. Independent of the per-person grants above:
+            changing it only adds, re-levels, or removes the __public__ grant. */}
+        {(publicSharingEnabled || publicGrant) && (
+          <section className="min-w-0 space-y-1" data-testid="share-general-access">
+            <h3 className="text-ui font-medium">General access</h3>
+            <div className="flex min-w-0 items-center gap-3 px-2 py-1">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted">
+                {publicGrant ? (
+                  <GlobeIcon className="size-4" aria-hidden="true" />
+                ) : (
+                  <LockIcon className="size-4" aria-hidden="true" />
+                )}
+              </span>
+              <div className="min-w-0 flex-1">
+                <Select
+                  value={publicGrant ? "link" : "restricted"}
+                  onValueChange={(value) => handlePublicLevel(value === "link" ? "1" : "0")}
+                  disabled={
+                    isLoading ||
+                    grant.isPending ||
+                    revoke.isPending ||
+                    (workspaceBlocked && !publicGrant)
+                  }
+                  componentId="diagnostics.permissions.public_level"
+                  valueHasNoPii
+                >
+                  <SelectTrigger
+                    className="h-7 w-auto max-w-full border-0 px-1 font-medium shadow-none"
+                    aria-label="General access"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent position="popper" align="start">
+                    <SelectItem value="restricted">Restricted</SelectItem>
+                    <SelectItem value="link" disabled={workspaceBlocked || !publicSharingEnabled}>
+                      Anyone with the link
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="px-1 text-sm text-muted-foreground">
+                  {publicGrant
+                    ? "Anyone signed in to this Omnigent server who has the link can open it"
+                    : "Only people you add can open this session"}
+                </p>
+              </div>
+              {publicGrant && (
+                <Select
+                  value={String(publicLevel)}
+                  onValueChange={handlePublicLevel}
+                  disabled={isLoading || grant.isPending || revoke.isPending}
+                  componentId="diagnostics.permissions.public_role"
+                  valueHasNoPii
+                >
+                  <SelectTrigger className="h-8 w-24 shrink-0" aria-label="Link access permission">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent position="popper" align="start">
+                    <SelectItem value="1" disabled={workspaceBlocked || !publicSharingEnabled}>
+                      Read
+                    </SelectItem>
+                    {publicMaxLevel === 2 && (
+                      <SelectItem
+                        value="2"
+                        disabled={sharingReadOnly || workspaceBlocked || !publicSharingEnabled}
+                      >
+                        Edit
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* Workspace-files toggle — off by default so a view-only share never
+            leaks the session's files (which routinely hold secrets). Applies to
+            every Read-level viewer, added or via the link; Edit already has files. */}
+        {hasWorkspace && (
+          <div
+            className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2"
+            data-testid="share-workspace-files"
+          >
+            <div className="min-w-0">
+              <p className="text-ui font-medium">Workspace files</p>
+              <p className="text-sm text-muted-foreground">
+                Let people with Read access browse this session&apos;s files. Applies to people you
+                add and to link access. Edit access always includes files.
+              </p>
+            </div>
+            <Switch
+              checked={workspaceShared}
+              onCheckedChange={(checked) => {
+                setError(null);
+                shareWorkspace.mutate(checked);
+              }}
+              disabled={shareWorkspace.isPending}
+              aria-label="Workspace files"
+              componentId="diagnostics.permissions.share_workspace_toggle"
+            />
+          </div>
+        )}
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 
@@ -420,7 +448,7 @@ function AddUserField({ value, onChange, disabled }: AddUserFieldProps) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="alice@example.com"
-        className="mt-1 h-8"
+        className="h-8"
         disabled={disabled}
       />
     );
@@ -526,7 +554,7 @@ function AddUserCombobox({ value, onChange, disabled }: AddUserFieldProps) {
         onBlur={() => setOpen(false)}
         onKeyDown={handleKeyDown}
         placeholder="alice@example.com"
-        className="mt-1 h-8"
+        className="h-8"
         autoComplete="off"
         disabled={disabled}
       />
