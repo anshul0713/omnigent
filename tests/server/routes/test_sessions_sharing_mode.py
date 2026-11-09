@@ -642,6 +642,41 @@ async def test_restricted_allows_read_when_no_workspace(db_uri: str, tmp_path: P
         assert resp.status_code == 200, resp.text
 
 
+@pytest.mark.parametrize(
+    ("sharing_mode", "workspace", "enable_status"),
+    [
+        (SharingMode.RESTRICTED_READ_ONLY, "/home/alice", 403),
+        (SharingMode.RESTRICTED_READ_ONLY, "/home/alice/project", 200),
+        (SharingMode.READ_ONLY, "/home/alice", 200),
+    ],
+)
+async def test_restricted_blocks_enabling_workspace_files_for_home_or_root(
+    db_uri: str,
+    tmp_path: Path,
+    runtime_init: None,
+    sharing_mode: SharingMode,
+    workspace: str,
+    enable_status: int,
+) -> None:
+    """Enabling workspace-file sharing follows the same home/root gate as
+    grants; turning it off is always allowed so owners can revoke it."""
+    from tests.server.helpers import create_test_agent
+
+    app, _ = _seed_owned_session(db_uri, tmp_path, sharing_mode=sharing_mode)
+    async with _client(app, _OWNER) as c:
+        agent = await create_test_agent(c, user=_OWNER)
+        conv = SqlAlchemyConversationStore(db_uri).create_conversation(
+            agent_id=agent["id"], workspace=workspace
+        )
+        SqlAlchemyPermissionStore(db_uri).grant(_OWNER, conv.id, LEVEL_OWNER)
+        sid = conv.id
+        enable = await c.patch(f"/v1/sessions/{sid}", json={"share_workspace_files": True})
+        assert enable.status_code == enable_status, enable.text
+        disable = await c.patch(f"/v1/sessions/{sid}", json={"share_workspace_files": False})
+        assert disable.status_code == 200, disable.text
+        assert disable.json()["share_workspace_files"] is False
+
+
 # ── File-backed override: persistence + create_app precedence ────────
 
 

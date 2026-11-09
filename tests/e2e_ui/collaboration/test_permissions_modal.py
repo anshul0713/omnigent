@@ -245,14 +245,14 @@ def test_permissions_modal_controls_drive_server_state(
     _open_share_modal(page)
     dialog = page.get_by_role("dialog")
 
-    # General access: Restricted -> Anyone with the link creates a __public__ Read grant.
-    public_level = dialog.get_by_role("combobox", name="General access")
-    expect(public_level).to_have_text("Restricted")
+    # General access: Only added people -> Anyone signed in creates a __public__ Read grant.
+    public_level = dialog.get_by_role("combobox", name="Who can access")
+    expect(public_level).to_have_text("Only added people")
     assert _PUBLIC_USER not in _permissions(base_url, session_id)
     public_level.click()
-    page.get_by_role("option", name="Anyone with the link", exact=True).click()
-    expect(public_level).to_have_text("Anyone with the link")
-    expect(dialog.get_by_role("combobox", name="Link access permission")).to_have_text("Read")
+    page.get_by_role("option", name="Anyone signed in", exact=True).click()
+    expect(public_level).to_have_text("Anyone signed in")
+    expect(dialog.get_by_role("combobox", name="What can they do?")).to_have_text("Read")
     # Wait for the mutation before cross-checking the grant through the API.
     _wait_for(lambda: _permissions(base_url, session_id).get(_PUBLIC_USER) == _LEVEL_READ)
 
@@ -269,7 +269,7 @@ def test_permissions_modal_controls_drive_server_state(
 
     # ── Grant a user at Read via the add-user form ───────────────────
     dialog.get_by_placeholder("alice@example.com").fill(grantee)
-    dialog.get_by_role("button", name="Grant").click()
+    dialog.get_by_role("button", name="Add").click()
     # The new row renders the grantee and the REST state agrees at Read.
     expect(dialog.get_by_title(grantee)).to_be_visible()
     _wait_for(lambda: _permissions(base_url, session_id).get(grantee) == _LEVEL_READ)
@@ -281,7 +281,7 @@ def test_permissions_modal_controls_drive_server_state(
     _wait_for(lambda: _permissions(base_url, session_id).get(grantee) == _LEVEL_EDIT)
 
     # ── Revoke the user: row disappears, grant is gone server-side ───
-    dialog.get_by_role("button", name="Revoke").click()
+    dialog.get_by_role("button", name=f"Remove access for {grantee}").click()
     expect(dialog.get_by_title(grantee)).to_have_count(0)
     _wait_for(lambda: grantee not in _permissions(base_url, session_id))
 
@@ -379,11 +379,11 @@ def test_public_edit_ceiling_grant_downgrade_revoke(
         page.goto(f"{multi_user_server.public_url}/c/{session_id}")
         _open_share_modal(page)
         dialog = page.get_by_role("dialog")
-        general = dialog.get_by_role("combobox", name="General access")
-        expect(general).to_have_text("Restricted")
+        general = dialog.get_by_role("combobox", name="Who can access")
+        expect(general).to_have_text("Only added people")
         general.click()
-        page.get_by_role("option", name="Anyone with the link", exact=True).click()
-        link_role = dialog.get_by_role("combobox", name="Link access permission")
+        page.get_by_role("option", name="Anyone signed in", exact=True).click()
+        link_role = dialog.get_by_role("combobox", name="What can they do?")
         expect(link_role).to_have_text("Read")
         link_role.click()
         page.get_by_role("option", name="Edit", exact=True).click()
@@ -399,7 +399,7 @@ def test_public_edit_ceiling_grant_downgrade_revoke(
         composer = member.get_by_placeholder("Send a message…")
         expect(composer).to_be_enabled(timeout=30_000)
         page.screenshot(path=str(tmp_path / "public-sharing-owner.png"))
-        page.get_by_role("button", name="Done", exact=True).click()
+        dialog.get_by_role("button", name="Close", exact=True).click()
         marker = f"public-edit-{secrets.token_hex(4)}"
         composer.fill(f"Reply with exactly this token and nothing else: {marker}")
         member.get_by_role("button", name="Send", exact=True).click()
@@ -441,13 +441,13 @@ def test_public_edit_ceiling_grant_downgrade_revoke(
         _open_share_modal(page)
         page.set_viewport_size({"width": 390, "height": 844})
         dialog = page.get_by_role("dialog")
-        general = dialog.get_by_role("combobox", name="General access")
-        expect(general).to_have_text("Anyone with the link")
-        expect(dialog.get_by_role("combobox", name="Link access permission")).to_have_text("Read")
+        general = dialog.get_by_role("combobox", name="Who can access")
+        expect(general).to_have_text("Anyone signed in")
+        expect(dialog.get_by_role("combobox", name="What can they do?")).to_have_text("Read")
         page.screenshot(path=str(tmp_path / "public-sharing-mobile.png"))
         assert dialog.evaluate("(el) => el.scrollWidth <= el.clientWidth")
         general.click()
-        page.get_by_role("option", name="Restricted", exact=True).click()
+        page.get_by_role("option", name="Only added people", exact=True).click()
         _wait_for(
             lambda: _PUBLIC_USER not in _permissions(base_url, session_id, headers=admin_headers)
         )
